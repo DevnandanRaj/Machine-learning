@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Machine Learning</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css">
+  <style>
+    body {
+      background: linear-gradient(to bottom right, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0));
+    }
+
+    .centered-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+
+    .h1 {
+      font-size: 2.5rem;
+    }
+
+    .btn {
+      width: 100px;
+      margin: 10px 0;
+    }
+
+    .content-container {
+      display: flex;
+      align-items: center;
+      margin-right: 100px;
+    }
+
+    .webcam-container {
+      flex: 1;
+    }
+
+    .prediction-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      /* Align prediction bars to the left */
+      margin-top: 25px;
+      margin-left: 25px;
+    }
+
+    .progress-container {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .progress-bar {
+      position: relative;
+      height: 30px;
+      border: 5px solid #ccc;
+      border-radius: 5px;
+      width: 100%;
+    }
+
+    .progress-label {
+      font-weight: bold;
+      font-size: 30px;
+    }
+
+    /* Hide the "Stop" button by default */
+    .stop-button {
+      display: none;
+    }
+
+    /* Show the "Start" button when "Stop" is hidden */
+    .start-button.hidden+.stop-button {
+      display: inline-block;
+    }
+
+    /* Show the "Stop" button when "Start" is hidden */
+    .stop-button.hidden+.start-button {
+      display: inline-block;
+    }
+  </style>
+</head>
+
+<body class="bg-light centered-container">
+  <h1 class="mt-5">Machine Learning</h1>
+  <!-- Toggle the "hidden" class to hide/show buttons -->
+  <button class="btn btn-primary start-button" type="button" onclick="start()">Start</button>
+  <button class="btn btn-danger stop-button" type="button" onclick="stop()">Stop</button>
+  <div class="content-container">
+    <div class="webcam-container" id="webcam-container"></div>
+    <div class="prediction-container" id="label-container"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+  <script type="text/javascript">
+    const URL = "https://teachablemachine.withgoogle.com/models/11uNc3ywU/";
+    let model, webcam, labelContainer, maxPredictions;
+    let withoutHelmetTime = 0;
+    const withoutHelmetThreshold = 80; // Set the threshold for "Without Helmet" class
+
+    // Declare beepInterval globally
+    let beepInterval;
+
+    // Function to speak a custom sentence
+    function speakCustomSentence(sentence) {
+      const utterance = new SpeechSynthesisUtterance(sentence);
+      speechSynthesis.speak(utterance);
+    }
+
+    function startBeepInterval() {
+      // Start speaking a custom sentence every 2 seconds
+      beepInterval = setInterval(() => {
+        speakCustomSentence("Please wear a helmet for your safety.");
+      }, 2000);
+    }
+
+    function stopBeepInterval() {
+      clearInterval(beepInterval);
+    }
+
+    // Function to toggle the buttons
+    function toggleButtons() {
+      const startButton = document.querySelector('.start-button');
+      const stopButton = document.querySelector('.stop-button');
+      startButton.classList.toggle('hidden');
+      stopButton.classList.toggle('hidden');
+    }
+
+    // Function to start and toggle buttons
+    function start() {
+      toggleButtons();
+      init(); // Initialize the application
+    }
+
+    // Function to stop and toggle buttons
+    function stop() {
+      toggleButtons();
+      stopBeepInterval(); // Stop speaking the custom sentence
+      location.reload(); // Refresh the page
+    }
+
+    async function init() {
+      const modelURL = URL + "model.json";
+      const metadataURL = URL + "metadata.json";
+
+      model = await tmImage.load(modelURL, metadataURL);
+      maxPredictions = model.getTotalClasses();
+
+      const flip = true;
+      webcam = new tmImage.Webcam(600, 600, flip);
+      await webcam.setup();
+      await webcam.play();
+      window.requestAnimationFrame(loop);
+
+      document.getElementById("webcam-container").appendChild(webcam.canvas);
+      labelContainer = document.getElementById("label-container");
+
+      for (let i = 0; i < maxPredictions; i++) {
+        const progressContainer = document.createElement("div");
+        progressContainer.className = "progress-container";
+        const progressLabel = document.createElement("div");
+        progressLabel.className = "progress-label";
+        progressLabel.textContent = model.getClassLabels()[i];
+        const progressBar = document.createElement("div");
+        progressBar.className = "progress-bar prediction-bar";
+        progressBar.style.width = "0%";
+        progressBar.style.backgroundColor = getRandomColor();
+
+        progressContainer.appendChild(progressLabel);
+        progressContainer.appendChild(progressBar);
+        labelContainer.appendChild(progressContainer);
+      }
+    }
+
+    async function loop() {
+      webcam.update();
+      await predict();
+      window.requestAnimationFrame(loop);
+    }
+
+    async function predict() {
+      const prediction = await model.predict(webcam.canvas);
+      const progressBars = document.querySelectorAll(".progress-bar");
+
+      for (let i = 0; i < maxPredictions; i++) {
+        const progressBar = progressBars[i];
+        const probability = prediction[i].probability * 100;
+        progressBar.style.width = `${probability}%`;
+
+        // Format probability to two decimal places
+        const formattedProbability = probability.toFixed(2);
+
+        // Log the formatted probability
+        console.log(`Class ${i}: ${formattedProbability}%`);
+
+        if (i === 0) {
+          const probabilityAsNumber = parseFloat(formattedProbability);
+          if (probabilityAsNumber > withoutHelmetThreshold) {
+            console.log(`Without Helmet Probability: ${formattedProbability}`);
+            console.log(`Without Helmet Time: ${withoutHelmetTime}`);
+            withoutHelmetTime += 1; // Increment the time if "Without Helmet" probability is above the threshold
+            if (withoutHelmetTime === 5) {
+              startBeepInterval(); // Start speaking the custom sentence every 2 seconds after 5 seconds
+            }
+          } else {
+            withoutHelmetTime = 0; // Reset time if the probability goes below the threshold
+            stopBeepInterval(); // Stop speaking the custom sentence if the probability is below the threshold
+          }
+        }
+      }
+    }
+
+    function getRandomColor() {
+      const letters = '0123456789ABCDEF';
+      let color = '#';
+      for (let i = 0; i < 6; i++) {
+        color += letters[Math.floor(Math.random() * 16)];
+      }
+      return color;
+    }
+  </script>
+</body>
+
+</html>
